@@ -1,0 +1,145 @@
+\documentclass{article}
+\usepackage{listings}
+\usepackage[utf8]{inputenc}
+
+
+\begin{document}
+
+
+
+\section{Starting stopping and running container:}
+ To start the docker daemon run:
+ \begin{lstlisting}[language=bash]
+  $ systemctl start docker
+\end{lstlisting}
+To run container, container will first pull from docker and then run.
+ \begin{lstlisting}[language=bash]
+ $ docker container run -it <container-to-download>
+ \end{lstlisting}
+ the following command prints processes and orders by resource consumption:
+ Container namespace isolation prevents seeing other processes.
+ \begin{lstlisting}[language=bash]
+ $ top
+ \end{lstlisting}
+ to get info on running containers:
+  \begin{lstlisting}[language=bash]
+ $ docker container ls
+ \end{lstlisting}
+to enter into existing container use:
+  \begin{lstlisting}[language=bash]
+ $ docker container exec -it <sha-of-container> bash
+ \end{lstlisting}
+types of isolation docker provides:
+\begin{itemize}
+    \item PID is just one of the Linux namespaces that provides containers with isolation to system resources.
+    \item MNT: Mount and unmount directories without affecting other namespaces.
+    \item NET: Containers have their own network stack.
+    \item IPC: Isolated interprocess communication mechanisms such as message queues.
+    \item User: Isolated view of users on the system.
+    \item UTC: Set hostname and domain name per container.
+\end{itemize}
+to run multiple containers: (note $-d or --detach$ runs container in background, $-p or --publish$ is to attach default port from container (determined from documentation) to your assigned port in your host, --name assigns port name so you can use name instead of the SHA)
+  \begin{lstlisting}[language=bash]
+$ docker container run --detach --publish <fpt>:<tpt> --name <name> <cont>
+ \end{lstlisting}
+ Destroy containers: 
+  \begin{lstlisting}[language=bash]
+$ docker container stop <name or SHA>
+ \end{lstlisting}
+ and remove stopped containers 
+  \begin{lstlisting}[language=bash]
+ $ docker system prune
+ \end{lstlisting}
+ 
+ \section{building and pushing docker image}
+ example: add to DockerFile 
+ \begin{lstlisting}[language=bash]
+FROM python:3.6.1-alpine # starting image to build your layers on top of
+RUN pip install flask #-- commands required to set up image
+CMD ["python","app.py"] #--executed command when starting the container
+COPY app.py /app.py #--files copied in containers local directory
+ \end{lstlisting}
+build docker image (-t is to name image)
+ \begin{lstlisting}[language=bash]
+$ docker image build -t python-hello-world .
+ \end{lstlisting}
+ to see log in application
+  \begin{lstlisting}[language=bash]
+   $ docker container logs [container id]
+ \end{lstlisting}
+ push to registry:
+   \begin{lstlisting}[language=bash]
+ $ docker login #enter username and password
+ $ docker tag python-hello-world [dockerhub username]/python-hello-world 
+ #tag w/username
+ $ docker push jzaccone/python-hello-world #push
+  \end{lstlisting}
+  to deploy a change: 
+    \begin{lstlisting}[language=bash]
+ $ docker image build -t jzaccone/python-hello-world . #rebuild
+ $ docker push jzaccone/python-hello-world #repush
+  \end{lstlisting}
+  docker only rebuilds changes of changed layer and all layers above it. None below. 
+  \subsection{Understanding Layers}
+  each line in the dockerfile represents a layer, the lower the line, the higher the layer
+  layers are read only except toplayer which is copy-on-write which pulls up layers files when edits are made to lower files.
+  Layers can be shared by containers 
+  can be seen from 
+   \begin{lstlisting}[language=bash]
+  $ docker image history python-hello-world
+   \end{lstlisting}
+  \section{Swarms}
+  in one instance of a terminal run:
+  \begin{lstlisting}[language=bash]
+$ docker swarm init --advertise-addr eth0 #run join swarm for child nodes
+   \end{lstlisting}
+   The command generates join token to ensure no malicious nodes join swarm 
+   
+   Now add a service: (--mount has hostname print out of node it is running on) --publish runs built in routing mesh
+  \begin{lstlisting}[language=bash]
+docker service create --detach=true --name nginx1 --publish 80:80  --mount source=/etc/hostname,target=/usr/share/nginx/html/index.html,
+type=bind,ro nginx:1.12
+   \end{lstlisting}
+   Inspect services:
+     \begin{lstlisting}[language=bash]
+docker service ls #running containers
+docker service ps nginx1 #running instances of service
+curl localhost:80 #test the service, see which node is running
+   \end{lstlisting}
+  Scale up service  
+    \begin{lstlisting}[language=bash]
+  $ docker service update --replicas=5 --detach=true nginx1
+nginx1 #replicas add that many instances
+  \end{lstlisting}
+  What Happens?
+  \begin{itemize}
+    \item The state of the service is updated to 5 replicas, which is stored in the swarm's internal storage.
+    \item Docker Swarm recognizes that the number of replicas that is scheduled now does not match the declared state of 5.
+    \item Docker Swarm schedules 4 more tasks (containers) in an attempt to meet the declared state for the service.
+\end{itemize}
+Sending a lot of requests will result in changing nodes in swarm which handle requests.
+see historical log from 
+\begin{lstlisting}[language=bash]
+$ docker service logs nginx1
+  \end{lstlisting}
+  
+apply updates: 
+   \begin{lstlisting}[language=bash]
+$ docker service update --image nginx:1.13 --detach=true nginx1
+   \end{lstlisting}
+   docker Now updates. Recognizes desired and actual state are mismatched and forces correction in update.
+   
+   If you leave swarm and watch
+   with this command
+      \begin{lstlisting}[language=bash]
+   watch -n 1 docker service ps nginx2
+     \end{lstlisting}
+     swarm automatically corrects itself
+     
+     Node failures: in event of manager node failure, you want other manager nodes to pick up slack. 
+     three managers handles one, five handles two and seven -three
+   \begin{lstlisting}[language=bash]
+
+   \end{lstlisting}
+\end{document}
+
